@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
+from torch.utils.checkpoint import checkpoint
 from torchvision import transforms
 import random
 from models import WSDAN_CAL
@@ -39,6 +40,10 @@ drop_metric = TopKAccuracyMetric(topk=(1, 5))
 verification_metric = VerificationMetrics()
 
 best_acc = 0.0
+
+def checkpointed_forward(model, x):
+    """Wrapper function for gradient checkpointing"""
+    return model(x)
 
 def main():
     torch.backends.cudnn.benchmark = True
@@ -99,6 +104,12 @@ def main():
             config.arcface_loss_type, config.arcface_s, config.arcface_m))
     else:
         logging.info('Using standard Cross-Entropy loss')
+
+    # Log gradient checkpointing status
+    if config.use_gradient_checkpointing:
+        logging.info('Gradient checkpointing enabled for memory optimization')
+    else:
+        logging.info('Gradient checkpointing disabled')
 
     if config.ckpt and os.path.isfile(config.ckpt):
         # Load ckpt and get state_dict
@@ -198,9 +209,13 @@ def verify_evaluate(**kwargs):
             img2 = img2.cuda()
             labels = labels.cuda()
 
-            # Extract features for both images
-            _, _, feature1, _ = net(img1)
-            _, _, feature2, _ = net(img2)
+            # Extract features for both images with optional gradient checkpointing
+            if config.use_gradient_checkpointing:
+                _, _, feature1, _ = checkpoint(checkpointed_forward, net, img1)
+                _, _, feature2, _ = checkpoint(checkpointed_forward, net, img2)
+            else:
+                _, _, feature1, _ = net(img1)
+                _, _, feature2, _ = net(img2)
 
             # Compute cosine similarity
             similarities = compute_cosine_similarity(feature1, feature2)
@@ -279,7 +294,11 @@ def train(**kwargs):
         X = X.cuda()
         y = y.cuda()
 
-        y_pred_raw, y_pred_aux, feature_matrix, attention_map = net(X)
+        # Forward pass with optional gradient checkpointing
+        if config.use_gradient_checkpointing:
+            y_pred_raw, y_pred_aux, feature_matrix, attention_map = checkpoint(checkpointed_forward, net, X)
+        else:
+            y_pred_raw, y_pred_aux, feature_matrix, attention_map = net(X)
 
         # Update Feature Center
         feature_center_batch = F.normalize(feature_center[y], dim=-1)
@@ -294,8 +313,11 @@ def train(**kwargs):
         aug_images = torch.cat([crop_images, drop_images], dim=0)
         y_aug = torch.cat([y, y], dim=0)
 
-        # crop images forward
-        y_pred_aug, y_pred_aux_aug, feature_matrix_aug, _ = net(aug_images)
+        # crop images forward with optional gradient checkpointing
+        if config.use_gradient_checkpointing:
+            y_pred_aug, y_pred_aux_aug, feature_matrix_aug, _ = checkpoint(checkpointed_forward, net, aug_images)
+        else:
+            y_pred_aug, y_pred_aux_aug, feature_matrix_aug, _ = net(aug_images)
 
         y_pred_aux = torch.cat([y_pred_aux, y_pred_aux_aug], dim=0)
         y_aux = torch.cat([y, y_aug], dim=0)
