@@ -3,7 +3,7 @@
 ##################################################
 workers = 1                 # number of Dataloader workers
 epochs = 80                # number of epochs
-batch_size = 16             # batch size
+batch_size = 12             # batch size
 learning_rate = 1e-3        # initial learning rate
 
 ##################################################
