@@ -11,7 +11,7 @@ learning_rate = 1e-3        # initial learning rate
 ##################################################
 image_size = (448, 448)     # size of training images
 net = 'resnet101'  # feature extractor
-num_attentions = 32     # number of attention maps
+num_attentions = 16     # number of attention maps
 beta = 5e-2                 # param for update feature centers
 
 ##################################################
