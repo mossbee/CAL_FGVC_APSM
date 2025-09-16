@@ -43,8 +43,9 @@ class AngularPenaltySMLoss(nn.Module):
         assert torch.min(labels) >= 0
         assert torch.max(labels) < self.out_features
         
-        for W in self.fc.parameters():
-            W = F.normalize(W, p=2, dim=1)
+        # Fix weight normalization - normalize weights in-place
+        with torch.no_grad():
+            self.fc.weight.data = F.normalize(self.fc.weight.data, p=2, dim=1)
 
         x = F.normalize(x, p=2, dim=1)
 

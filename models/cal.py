@@ -12,6 +12,7 @@ import torch.nn.functional as F
 
 import models.resnet as resnet
 from models.inception import inception_v3, BasicConv2d
+import config
 
 import random
 
@@ -176,7 +177,11 @@ class WSDAN_CAL(nn.Module):
             attention_maps = feature_maps[:, :self.M, ...]
 
         feature_matrix, _ = self.bap(feature_maps, attention_maps)
-        p = self.fc(feature_matrix * 100.)
+        # Use same scaling logic as forward method
+        if config.use_arcface:
+            p = self.fc(feature_matrix)  # No scaling for ArcFace
+        else:
+            p = self.fc(feature_matrix * 100.)  # Keep scaling for cross-entropy
 
         return p, attention_maps
 
@@ -193,8 +198,11 @@ class WSDAN_CAL(nn.Module):
         
         feature_matrix, feature_matrix_hat = self.bap(feature_maps, attention_maps)
 
-        # Classification
-        p = self.fc(feature_matrix * 100.)
+        # Classification - don't scale features for ArcFace
+        if config.use_arcface:
+            p = self.fc(feature_matrix)  # No scaling for ArcFace
+        else:
+            p = self.fc(feature_matrix * 100.)  # Keep scaling for cross-entropy
 
         # Generate Attention Map
         if self.training:
@@ -209,7 +217,13 @@ class WSDAN_CAL(nn.Module):
         else:
             attention_map = torch.mean(attention_maps, dim=1, keepdim=True)  # (B, 1, H, W)
         
-        return p, p - self.fc(feature_matrix_hat * 100.), feature_matrix, attention_map
+        # Compute counterfactual prediction with same scaling logic
+        if config.use_arcface:
+            p_hat = self.fc(feature_matrix_hat)  # No scaling for ArcFace
+        else:
+            p_hat = self.fc(feature_matrix_hat * 100.)  # Keep scaling for cross-entropy
+        
+        return p, p - p_hat, feature_matrix, attention_map
 
     def load_state_dict(self, state_dict, strict=True):
         model_dict = self.state_dict()
