@@ -185,6 +185,11 @@ def main():
 
         torch.cuda.synchronize()
         callback.on_epoch_end(logs, net, feature_center=feature_center)
+        
+        # Save lightweight last model after each epoch (for inference/fine-tuning)
+        save_lite_model(net, 'last_model.pth')
+        logging.info('Lightweight model saved as last_model.pth (excludes dataset-specific layers)')
+        
         pbar.close()
 
 def verify_evaluate(**kwargs):
@@ -371,6 +376,37 @@ def train(**kwargs):
 
 def save_model(net, logs, ckpt_name):
     torch.save({'logs': logs, 'state_dict': net.state_dict()}, config.save_dir + ckpt_name)
+
+def save_lite_model(net, ckpt_name):
+    """
+    Save a lightweight model with only state_dict for inference/fine-tuning.
+    Excludes dataset-specific components like:
+    - Final classification layer (fc.weight) - depends on number of classes
+    - feature_center is not included (only in full model saves)
+    - ArcFace layers are separate and not included in model state_dict
+    
+    Benefits:
+    - Cleaner format without training logs
+    - Easier to load for inference (just model.load_state_dict(strict=False))
+    - Better for transfer learning to new datasets
+    """
+    # Get full state dict
+    full_state_dict = net.state_dict()
+    
+    # Create filtered state dict excluding dataset-specific components
+    filtered_state_dict = {}
+    exclude_keys = ['fc.weight', 'fc.bias']  # Final classification layer
+    
+    for key, value in full_state_dict.items():
+        if not any(exclude_key in key for exclude_key in exclude_keys):
+            filtered_state_dict[key] = value
+    
+    # Log what we're excluding
+    excluded_keys = [key for key in full_state_dict.keys() if key not in filtered_state_dict]
+    if excluded_keys:
+        logging.info(f'Excluded dataset-specific layers from lite model: {excluded_keys}')
+    
+    torch.save(filtered_state_dict, config.save_dir + ckpt_name)
 
 if __name__ == '__main__':
     main()
