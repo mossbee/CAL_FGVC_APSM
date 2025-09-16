@@ -76,30 +76,21 @@ def main():
     feature_center = torch.zeros(num_classes, config.num_attentions * net.num_features).cuda()
 
     # Initialize ArcFace losses if enabled
+
+    # Initialize ArcFace losses if enabled
     global arcface_loss_raw, arcface_loss_aux, arcface_loss_aug
     if config.use_arcface:
         feature_dim = config.num_attentions * net.num_features
+        # Use ONE shared ArcFace head to save memory
         arcface_loss_raw = AngularPenaltySMLoss(
-            in_features=feature_dim, 
+            in_features=feature_dim,
             out_features=num_classes,
             loss_type=config.arcface_loss_type,
             s=config.arcface_s,
             m=config.arcface_m
         ).cuda()
-        arcface_loss_aux = AngularPenaltySMLoss(
-            in_features=feature_dim, 
-            out_features=num_classes,
-            loss_type=config.arcface_loss_type,
-            s=config.arcface_s,
-            m=config.arcface_m
-        ).cuda()
-        arcface_loss_aug = AngularPenaltySMLoss(
-            in_features=feature_dim, 
-            out_features=num_classes,
-            loss_type=config.arcface_loss_type,
-            s=config.arcface_s,
-            m=config.arcface_m
-        ).cuda()
+        arcface_loss_aux = arcface_loss_raw
+        arcface_loss_aug = arcface_loss_raw
         logging.info('ArcFace loss initialized with type: {}, s: {}, m: {}'.format(
             config.arcface_loss_type, config.arcface_s, config.arcface_m))
     else:
@@ -139,7 +130,11 @@ def main():
 
     learning_rate = config.learning_rate
     print('begin with', learning_rate, 'learning rate')
-    optimizer = torch.optim.SGD(net.parameters(), lr=learning_rate, momentum=0.9, weight_decay=1e-5)
+    if config.use_arcface:
+        params = list(net.parameters()) + list(arcface_loss_raw.parameters())
+    else:
+        params = net.parameters()
+    optimizer = torch.optim.SGD(params, lr=learning_rate, momentum=0.9, weight_decay=1e-5)
 
     train_loader, verification_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True,
                                                num_workers=config.workers, pin_memory=True, drop_last=True), \

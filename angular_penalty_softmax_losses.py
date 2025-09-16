@@ -45,7 +45,10 @@ class AngularPenaltySMLoss(nn.Module):
         
         # Fix weight normalization - normalize weights in-place
         with torch.no_grad():
-            self.fc.weight.data = F.normalize(self.fc.weight.data, p=2, dim=1)
+            # self.fc.weight.data = F.normalize(self.fc.weight.data, p=2, dim=1)
+            w = self.fc.weight.data
+            denom = w.norm(p=2, dim=1, keepdim=True).clamp_min(1e-12)
+            w.div_(denom)
 
         x = F.normalize(x, p=2, dim=1)
 
